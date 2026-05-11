@@ -187,14 +187,29 @@ Copy this into the PR description and tick boxes before requesting review (or me
 - [ ] Linked to source-of-truth doc section if implementing a spec'd feature
 ```
 
-## 5. Pre-commit and CI (future)
+## 5. Pre-commit and CI
 
-Not set up yet, but planned:
+Local hooks are configured with pre-commit:
 
-- **pre-commit hooks**: `ruff check --fix`, `ruff format`, `mypy` on staged files. Add when the PR friction starts to feel real.
-- **GitHub Actions CI**: matrix on Python 3.12, run `uv sync`, `ruff check`, `mypy`, `pytest -m "not integration"`. A separate job spins up Postgres+Redis for integration tests. Add when the repo goes public or gets a second contributor.
+```bash
+make setup
+# or, if dependencies are already installed:
+make install-hooks
+```
 
-When CI is added, the *PR checklist* items above become enforced status checks rather than honor-system.
+Hook behavior:
+- **pre-commit:** repo-wide `ruff check --fix`, `ruff format`, strict `mypy`, and full `pytest`
+- **commit-msg:** validates Conventional Commit subjects, e.g. `feat(api): add health check`
+
+The commit must not be created if any lint, type, or test step fails.
+
+Run hooks manually with:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+GitHub Actions CI runs on pushes to `main` and pull requests. It installs with `uv sync --all-packages --locked`, then runs Ruff format check, Ruff lint, mypy, and fast pytest. Add a separate service-backed integration job once `tests/integration/` has real tests.
 
 ## 6. Anti-patterns to avoid
 

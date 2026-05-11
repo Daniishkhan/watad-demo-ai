@@ -39,6 +39,7 @@ Python 3.12 managed by uv (workspace mode). Local infra via `docker compose`. Al
 ```bash
 # Setup
 uv sync --all-packages                              # install all workspace members + dev deps
+make setup                                          # sync deps, install hooks, create .env if missing
 cp .env.example .env                                # then fill in ANTHROPIC_API_KEY etc.
 docker compose -f infra/docker-compose.yml up -d    # start Postgres (pgvector) + Redis
 docker compose -f infra/docker-compose.yml down     # stop them
@@ -57,6 +58,9 @@ uv run pytest tests/unit/test_x.py::test_y -v       # single test
 uv run pytest -m "not integration and not eval"     # fast unit-only run
 uv run pytest -m integration                        # integration only (needs containers)
 uv run pytest --cov=watad                           # with coverage
+make check                                          # local commit gates: lint + types + all tests
+make ci                                             # full local quality gates
+make install-hooks                                  # install pre-commit and commit-msg hooks
 ```
 
 Local services (defaults from `infra/docker-compose.yml`, project name pinned to `watad`):

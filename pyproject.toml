@@ -13,19 +13,20 @@ members = ["apps/api"]
 [dependency-groups]
 # Dev/tooling deps are workspace-wide so the same versions apply everywhere.
 dev = [
+    "ipython>=8.30",
+    "pre-commit>=4.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "pytest-cov>=6.0",
     "ruff>=0.8",
     "mypy>=1.13",
     "respx>=0.21",
-    "ipython>=8.30",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["apps/api/src", "tests"]
+src = ["apps/api/src", "scripts", "tests"]
 extend-exclude = [".venv", "data"]
 
 [tool.ruff.lint]
@@ -33,6 +34,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "N"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
     "integration: tests requiring docker compose services (postgres, redis)",
@@ -42,4 +44,12 @@ markers = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["apps/api/src", "tests"]
+files = ["apps/api/src", "scripts", "tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["watad"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

@@ -16,19 +16,24 @@ packages/      future shared packages only when needed
 ## Quick Start
 
 ```bash
-uv sync --all-packages
-cp .env.example .env
-docker compose -f infra/docker-compose.yml up -d
-uv run watad
-uv run pytest
+make setup
+make infra-up
+make run
+make test
 ```
 
 Before opening a PR, run:
 
 ```bash
-uv run ruff check .
-uv run mypy .
-uv run pytest
+make ci
+```
+
+Useful commands:
+
+```bash
+make check             # local commit gates: lint + typecheck + all tests
+make coverage          # test coverage report
+make install-hooks     # install pre-commit and commit-msg hooks
 ```
 
 Read `AGENTS.md` for contributor guidance and `docs/workflow.md` for branching, testing, and PR process.
