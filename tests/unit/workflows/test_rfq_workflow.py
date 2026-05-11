@@ -3,6 +3,17 @@ from datetime import date
 from watad.workflows.rfq import RFQWorkflowService
 
 
+def test_workflow_service_exposes_langgraph_node_order() -> None:
+    service = RFQWorkflowService(today=lambda: date(2026, 5, 11))
+
+    assert service.graph_node_names == (
+        "intake_node",
+        "rfq_validation_node",
+        "supplier_matching_node",
+        "offer_comparison_node",
+    )
+
+
 def test_start_workflow_returns_structured_rfq_and_clarification() -> None:
     service = RFQWorkflowService(today=lambda: date(2026, 5, 11))
 
