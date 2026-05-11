@@ -49,7 +49,7 @@ def test_start_and_continue_rfq_workflow_through_api() -> None:
 
     assert continue_response.status_code == 200
     continued = continue_response.json()
-    assert continued["status"] == "supplier_shortlist_ready"
+    assert continued["status"] == "recommendation_ready"
     assert continued["rfq"]["project_name"] == "Al Yasmin Villas"
     assert continued["rfq"]["delivery_site"] == "North Riyadh"
     assert continued["missing_fields"] == []
@@ -59,11 +59,68 @@ def test_start_and_continue_rfq_workflow_through_api() -> None:
         "SUP-001",
         "SUP-003",
     ]
+    assert continued["recommendation"]["recommended_supplier_id"] == "SUP-002"
 
     get_response = client.get(f"/api/workflows/rfq/{workflow_id}")
 
     assert get_response.status_code == 200
-    assert get_response.json()["status"] == "supplier_shortlist_ready"
+    assert get_response.json()["status"] == "recommendation_ready"
+
+
+def test_offer_comparison_tool_returns_award_recommendation() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/offers/compare",
+        json={
+            "rfq": {
+                "material_category": "steel",
+                "material_name": "rebar",
+                "specification": "16mm rebar",
+                "quantity": 500,
+                "unit": "tons",
+                "delivery_city": "Riyadh",
+                "delivery_site": "North Riyadh",
+                "delivery_deadline": "2026-05-18",
+                "project_name": "Al Yasmin Villas",
+                "payment_preference": "60_days",
+                "optimization_preference": "lowest_price",
+                "certification_requirements": ["Saudi standard"],
+                "split_delivery_acceptable": True,
+            },
+            "supplier_candidates": [
+                {
+                    "supplier_id": "SUP-002",
+                    "supplier_name": "Riyadh Metals",
+                    "fit_score": 0.94,
+                    "unit_price_sar": 2360,
+                    "available_quantity": 500,
+                    "delivery_days": 8,
+                    "payment_terms": ["30_days", "60_days"],
+                    "reliability_score": 0.89,
+                    "strengths": ["supports requested payment terms"],
+                    "risks": ["delivery may miss requested deadline"],
+                    "total_price_sar": 1_180_000,
+                },
+                {
+                    "supplier_id": "SUP-001",
+                    "supplier_name": "Al Noor Steel",
+                    "fit_score": 0.91,
+                    "unit_price_sar": 2410,
+                    "available_quantity": 500,
+                    "delivery_days": 6,
+                    "payment_terms": ["30_days"],
+                    "reliability_score": 0.94,
+                    "strengths": ["fast delivery window"],
+                    "risks": ["payment terms do not match preference"],
+                    "total_price_sar": 1_205_000,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["recommended_supplier_id"] == "SUP-002"
 
 
 def test_supplier_search_tool_returns_catalog_backed_candidates() -> None:

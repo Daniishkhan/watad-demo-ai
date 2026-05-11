@@ -3,7 +3,14 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from watad.models import RFQDraft, RFQValidationResult, RFQWorkflowState, SupplierCandidate
+from watad.models import (
+    AwardRecommendation,
+    RFQDraft,
+    RFQValidationResult,
+    RFQWorkflowState,
+    SupplierCandidate,
+)
+from watad.services.offer_comparison import rank_award_options
 from watad.services.rfq_validation import validate_rfq
 from watad.services.supplier_matching import SupplierCatalog, shortlist_suppliers
 from watad.workflows.rfq import RFQWorkflowService
@@ -48,6 +55,13 @@ class SupplierSearchRequest(BaseModel):
     limit: int = Field(default=3, ge=1, le=10)
 
 
+class OfferComparisonRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rfq: RFQDraft
+    supplier_candidates: list[SupplierCandidate] = Field(min_length=1)
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="watad-api")
@@ -90,3 +104,12 @@ def validate_rfq_tool(request: ValidateRFQRequest) -> RFQValidationResult:
 @app.post("/tools/suppliers/search", response_model=list[SupplierCandidate])
 def search_suppliers_tool(request: SupplierSearchRequest) -> list[SupplierCandidate]:
     return shortlist_suppliers(request.rfq, catalog=supplier_catalog, limit=request.limit)
+
+
+@app.post("/tools/offers/compare", response_model=AwardRecommendation)
+def compare_offers_tool(request: OfferComparisonRequest) -> AwardRecommendation:
+    recommendation = rank_award_options(request.rfq, request.supplier_candidates)
+    if recommendation is None:
+        raise HTTPException(status_code=400, detail="supplier candidates are required")
+
+    return recommendation

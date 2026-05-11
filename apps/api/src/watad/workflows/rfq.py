@@ -4,8 +4,17 @@ from collections.abc import Callable
 from datetime import date
 from uuid import uuid4
 
-from watad.models import AuditEvent, RFQDraft, RFQWorkflowState, SupplierCandidate, WorkflowMessage
+from watad.models import (
+    AuditEvent,
+    AwardRecommendation,
+    RFQDraft,
+    RFQWorkflowState,
+    RFQWorkflowStatus,
+    SupplierCandidate,
+    WorkflowMessage,
+)
 from watad.services.intake import parse_procurement_message
+from watad.services.offer_comparison import rank_award_options
 from watad.services.rfq_validation import generate_clarifying_question, validate_rfq
 from watad.services.supplier_matching import SupplierCatalog, shortlist_suppliers
 
@@ -34,10 +43,11 @@ class RFQWorkflowService:
             if validation.is_ready_for_supplier_search
             else []
         )
-        status = (
-            "supplier_shortlist_ready"
-            if supplier_candidates and validation.is_ready_for_supplier_search
-            else validation.status
+        recommendation = rank_award_options(parsed_rfq, supplier_candidates)
+        status = _status_after_supplier_steps(
+            validation.status,
+            supplier_candidates,
+            recommendation,
         )
         state = RFQWorkflowState(
             workflow_id=workflow_id,
@@ -48,6 +58,7 @@ class RFQWorkflowService:
             missing_fields=validation.missing_fields,
             questions=_questions_for(validation.missing_fields),
             supplier_candidates=supplier_candidates,
+            recommendation=recommendation,
             messages=[WorkflowMessage(role="user", content=message)],
             audit_events=[
                 AuditEvent(event_type="workflow_started", details={"user_id": user_id}),
@@ -63,6 +74,7 @@ class RFQWorkflowService:
                     },
                 ),
                 *_supplier_matching_events(supplier_candidates),
+                *_offer_comparison_events(recommendation),
             ],
         )
         self._workflows[workflow_id] = state
@@ -82,10 +94,11 @@ class RFQWorkflowService:
             if validation.is_ready_for_supplier_search
             else []
         )
-        status = (
-            "supplier_shortlist_ready"
-            if supplier_candidates and validation.is_ready_for_supplier_search
-            else validation.status
+        recommendation = rank_award_options(updated_rfq, supplier_candidates)
+        status = _status_after_supplier_steps(
+            validation.status,
+            supplier_candidates,
+            recommendation,
         )
         updated_state = state.model_copy(
             update={
@@ -94,6 +107,7 @@ class RFQWorkflowService:
                 "missing_fields": validation.missing_fields,
                 "questions": _questions_for(validation.missing_fields),
                 "supplier_candidates": supplier_candidates,
+                "recommendation": recommendation,
                 "messages": [
                     *state.messages,
                     WorkflowMessage(role="user", content=message),
@@ -113,6 +127,7 @@ class RFQWorkflowService:
                         },
                     ),
                     *_supplier_matching_events(supplier_candidates),
+                    *_offer_comparison_events(recommendation),
                 ],
             }
         )
@@ -163,3 +178,33 @@ def _supplier_matching_events(supplier_candidates: list[SupplierCandidate]) -> l
             },
         )
     ]
+
+
+def _offer_comparison_events(recommendation: AwardRecommendation | None) -> list[AuditEvent]:
+    if recommendation is None:
+        return []
+
+    return [
+        AuditEvent(
+            event_type="offer_comparison_completed",
+            details={
+                "recommended_supplier_id": recommendation.recommended_supplier_id,
+                "alternative_supplier_ids": [
+                    alternative.supplier_id for alternative in recommendation.alternatives
+                ],
+            },
+        )
+    ]
+
+
+def _status_after_supplier_steps(
+    validation_status: RFQWorkflowStatus,
+    supplier_candidates: list[SupplierCandidate],
+    recommendation: AwardRecommendation | None,
+) -> RFQWorkflowStatus:
+    if recommendation is not None:
+        return "recommendation_ready"
+    if supplier_candidates:
+        return "supplier_shortlist_ready"
+
+    return validation_status

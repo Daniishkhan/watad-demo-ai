@@ -1,3 +1,4 @@
+from watad.models.recommendation import AwardAlternative, AwardRecommendation
 from watad.models.rfq import (
     AuditEvent,
     OptimizationPreference,
@@ -11,6 +12,8 @@ from watad.models.supplier import Supplier, SupplierCandidate
 
 __all__ = [
     "AuditEvent",
+    "AwardAlternative",
+    "AwardRecommendation",
     "OptimizationPreference",
     "RFQDraft",
     "RFQValidationResult",
