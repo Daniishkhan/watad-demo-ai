@@ -5,11 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from watad.models import (
     AwardRecommendation,
+    CreditCheckResult,
     RFQDraft,
     RFQValidationResult,
     RFQWorkflowState,
     SupplierCandidate,
 )
+from watad.services.credit_policy import BuyerProfileStore, check_credit_policy
 from watad.services.offer_comparison import rank_award_options
 from watad.services.rfq_validation import validate_rfq
 from watad.services.supplier_matching import SupplierCatalog, shortlist_suppliers
@@ -18,6 +20,7 @@ from watad.workflows.rfq import RFQWorkflowService
 app = FastAPI(title="Watad AridOS RFQ Copilot API")
 workflow_service = RFQWorkflowService()
 supplier_catalog = SupplierCatalog.from_seed_data()
+buyer_profiles = BuyerProfileStore.from_seed_data()
 
 
 class HealthResponse(BaseModel):
@@ -60,6 +63,14 @@ class OfferComparisonRequest(BaseModel):
 
     rfq: RFQDraft
     supplier_candidates: list[SupplierCandidate] = Field(min_length=1)
+
+
+class CreditCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rfq: RFQDraft
+    recommendation: AwardRecommendation
+    company_id: str | None = None
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -113,3 +124,13 @@ def compare_offers_tool(request: OfferComparisonRequest) -> AwardRecommendation:
         raise HTTPException(status_code=400, detail="supplier candidates are required")
 
     return recommendation
+
+
+@app.post("/tools/credit/check", response_model=CreditCheckResult)
+def check_credit_tool(request: CreditCheckRequest) -> CreditCheckResult:
+    return check_credit_policy(
+        rfq=request.rfq,
+        recommendation=request.recommendation,
+        company_id=request.company_id,
+        buyer_profiles=buyer_profiles,
+    )

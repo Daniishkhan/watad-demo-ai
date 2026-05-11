@@ -10,12 +10,14 @@ from langgraph.graph import END, START, StateGraph
 from watad.models import (
     AuditEvent,
     AwardRecommendation,
+    CreditCheckResult,
     RFQDraft,
     RFQWorkflowState,
     RFQWorkflowStatus,
     SupplierCandidate,
     WorkflowMessage,
 )
+from watad.services.credit_policy import BuyerProfileStore, check_credit_policy
 from watad.services.intake import parse_procurement_message
 from watad.services.offer_comparison import rank_award_options
 from watad.services.rfq_validation import generate_clarifying_question, validate_rfq
@@ -26,6 +28,7 @@ RFQ_GRAPH_NODE_NAMES: Final[tuple[str, ...]] = (
     "rfq_validation_node",
     "supplier_matching_node",
     "offer_comparison_node",
+    "credit_eligibility_node",
 )
 
 
@@ -39,6 +42,7 @@ class RFQGraphState(TypedDict):
     questions: list[str]
     supplier_candidates: list[SupplierCandidate]
     recommendation: AwardRecommendation | None
+    credit_check: CreditCheckResult | None
     messages: list[WorkflowMessage]
     audit_events: list[AuditEvent]
     latest_user_message: str
@@ -51,9 +55,11 @@ class RFQWorkflowService:
         *,
         today: Callable[[], date] | None = None,
         supplier_catalog: SupplierCatalog | None = None,
+        buyer_profiles: BuyerProfileStore | None = None,
     ) -> None:
         self._today = today or date.today
         self._supplier_catalog = supplier_catalog or SupplierCatalog.from_seed_data()
+        self._buyer_profiles = buyer_profiles or BuyerProfileStore.from_seed_data()
         self._graph: Any = _build_graph(self)
         self._workflows: dict[str, RFQWorkflowState] = {}
 
@@ -119,6 +125,7 @@ class RFQWorkflowService:
             ],
             "supplier_candidates": [],
             "recommendation": None,
+            "credit_check": None,
             "audit_events": audit_events,
         }
 
@@ -174,6 +181,27 @@ class RFQWorkflowService:
             ],
         }
 
+    def _credit_eligibility_node(self, state: RFQGraphState) -> dict[str, object]:
+        credit_check = (
+            check_credit_policy(
+                rfq=state["rfq"],
+                recommendation=state["recommendation"],
+                company_id=state["company_id"],
+                buyer_profiles=self._buyer_profiles,
+            )
+            if state["recommendation"] is not None
+            else None
+        )
+        status = _status_after_credit_check(state["status"], credit_check)
+        return {
+            "status": status,
+            "credit_check": credit_check,
+            "audit_events": [
+                *state["audit_events"],
+                *_credit_eligibility_events(credit_check),
+            ],
+        }
+
 
 def _build_graph(service: RFQWorkflowService) -> Any:
     graph = StateGraph(RFQGraphState)
@@ -181,11 +209,13 @@ def _build_graph(service: RFQWorkflowService) -> Any:
     graph.add_node("rfq_validation_node", service._rfq_validation_node)
     graph.add_node("supplier_matching_node", service._supplier_matching_node)
     graph.add_node("offer_comparison_node", service._offer_comparison_node)
+    graph.add_node("credit_eligibility_node", service._credit_eligibility_node)
     graph.add_edge(START, "intake_node")
     graph.add_edge("intake_node", "rfq_validation_node")
     graph.add_conditional_edges("rfq_validation_node", _route_after_validation)
     graph.add_conditional_edges("supplier_matching_node", _route_after_supplier_matching)
-    graph.add_edge("offer_comparison_node", END)
+    graph.add_edge("offer_comparison_node", "credit_eligibility_node")
+    graph.add_edge("credit_eligibility_node", END)
     return graph.compile()
 
 
@@ -221,6 +251,7 @@ def _initial_graph_state(
         "questions": [],
         "supplier_candidates": [],
         "recommendation": None,
+        "credit_check": None,
         "messages": [],
         "audit_events": [],
         "latest_user_message": latest_user_message,
@@ -244,6 +275,7 @@ def _graph_state_from_workflow_state(
         "questions": state.questions,
         "supplier_candidates": state.supplier_candidates,
         "recommendation": state.recommendation,
+        "credit_check": state.credit_check,
         "messages": state.messages,
         "audit_events": state.audit_events,
         "latest_user_message": latest_user_message,
@@ -262,6 +294,7 @@ def _workflow_state_from_graph_state(state: RFQGraphState) -> RFQWorkflowState:
         questions=state["questions"],
         supplier_candidates=state["supplier_candidates"],
         recommendation=state["recommendation"],
+        credit_check=state["credit_check"],
         messages=state["messages"],
         audit_events=state["audit_events"],
     )
@@ -324,3 +357,35 @@ def _offer_comparison_events(recommendation: AwardRecommendation | None) -> list
             },
         )
     ]
+
+
+def _credit_eligibility_events(credit_check: CreditCheckResult | None) -> list[AuditEvent]:
+    if credit_check is None:
+        return []
+
+    return [
+        AuditEvent(
+            event_type="credit_eligibility_completed",
+            details={
+                "status": credit_check.status,
+                "finance_approval_required": credit_check.finance_approval_required,
+                "reason_codes": credit_check.reason_codes,
+            },
+        )
+    ]
+
+
+def _status_after_credit_check(
+    current_status: RFQWorkflowStatus,
+    credit_check: CreditCheckResult | None,
+) -> RFQWorkflowStatus:
+    if credit_check is None:
+        return current_status
+    if credit_check.status == "finance_approval_required":
+        return "finance_approval_required"
+    if credit_check.status == "not_eligible":
+        return "credit_not_eligible"
+    if credit_check.status == "missing_information":
+        return "credit_missing_information"
+
+    return current_status

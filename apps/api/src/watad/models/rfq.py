@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from watad.models.credit import CreditCheckResult
 from watad.models.recommendation import AwardRecommendation
 from watad.models.supplier import SupplierCandidate
 
@@ -20,6 +21,9 @@ type RFQWorkflowStatus = Literal[
     "ready_for_supplier_search",
     "supplier_shortlist_ready",
     "recommendation_ready",
+    "finance_approval_required",
+    "credit_not_eligible",
+    "credit_missing_information",
 ]
 
 
@@ -127,5 +131,6 @@ class RFQWorkflowState(BaseModel):
     questions: list[str] = Field(default_factory=list)
     supplier_candidates: list[SupplierCandidate] = Field(default_factory=list)
     recommendation: AwardRecommendation | None = None
+    credit_check: CreditCheckResult | None = None
     messages: list[WorkflowMessage] = Field(default_factory=list)
     audit_events: list[AuditEvent] = Field(default_factory=list)
