@@ -7,6 +7,7 @@ from watad.models.rfq import (
     RFQWorkflowStatus,
     WorkflowMessage,
 )
+from watad.models.supplier import Supplier, SupplierCandidate
 
 __all__ = [
     "AuditEvent",
@@ -15,5 +16,7 @@ __all__ = [
     "RFQValidationResult",
     "RFQWorkflowState",
     "RFQWorkflowStatus",
+    "Supplier",
+    "SupplierCandidate",
     "WorkflowMessage",
 ]

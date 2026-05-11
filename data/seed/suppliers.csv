@@ -1,0 +1,6 @@
+supplier_id,name,cities_served,material_categories,certifications,reliability_score,payment_terms_supported,average_delivery_days,max_quantity_tons,base_unit_price_sar,split_delivery_supported
+SUP-001,Al Noor Steel,Riyadh|Dammam,steel,Saudi standard|SASO,0.94,30_days,6,600,2410,false
+SUP-002,Riyadh Metals,Riyadh,steel,Saudi standard|SASO,0.89,30_days|60_days,8,700,2360,false
+SUP-003,GulfBuild Supply,Riyadh|Jeddah,steel,Saudi standard,0.91,upfront,7,300,2320,true
+SUP-004,Jeddah Cement,Jeddah,cement,Saudi standard,0.87,upfront|30_days,5,1000,290,false
+SUP-005,Eastern Aggregates,Dammam|Khobar,aggregates,Saudi standard,0.84,30_days,4,1200,75,false

@@ -3,12 +3,14 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from watad.models import RFQDraft, RFQValidationResult, RFQWorkflowState
+from watad.models import RFQDraft, RFQValidationResult, RFQWorkflowState, SupplierCandidate
 from watad.services.rfq_validation import validate_rfq
+from watad.services.supplier_matching import SupplierCatalog, shortlist_suppliers
 from watad.workflows.rfq import RFQWorkflowService
 
 app = FastAPI(title="Watad AridOS RFQ Copilot API")
 workflow_service = RFQWorkflowService()
+supplier_catalog = SupplierCatalog.from_seed_data()
 
 
 class HealthResponse(BaseModel):
@@ -37,6 +39,13 @@ class ValidateRFQRequest(BaseModel):
 
     rfq: RFQDraft
     company_id: str | None = None
+
+
+class SupplierSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rfq: RFQDraft
+    limit: int = Field(default=3, ge=1, le=10)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -76,3 +85,8 @@ def get_rfq_workflow(workflow_id: str) -> RFQWorkflowState:
 @app.post("/tools/rfq/validate", response_model=RFQValidationResult)
 def validate_rfq_tool(request: ValidateRFQRequest) -> RFQValidationResult:
     return validate_rfq(request.rfq, company_id=request.company_id)
+
+
+@app.post("/tools/suppliers/search", response_model=list[SupplierCandidate])
+def search_suppliers_tool(request: SupplierSearchRequest) -> list[SupplierCandidate]:
+    return shortlist_suppliers(request.rfq, catalog=supplier_catalog, limit=request.limit)

@@ -4,28 +4,50 @@ from collections.abc import Callable
 from datetime import date
 from uuid import uuid4
 
-from watad.models import AuditEvent, RFQDraft, RFQWorkflowState, WorkflowMessage
+from watad.models import AuditEvent, RFQDraft, RFQWorkflowState, SupplierCandidate, WorkflowMessage
 from watad.services.intake import parse_procurement_message
 from watad.services.rfq_validation import generate_clarifying_question, validate_rfq
+from watad.services.supplier_matching import SupplierCatalog, shortlist_suppliers
 
 
 class RFQWorkflowService:
-    def __init__(self, *, today: Callable[[], date] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        today: Callable[[], date] | None = None,
+        supplier_catalog: SupplierCatalog | None = None,
+    ) -> None:
         self._today = today or date.today
+        self._supplier_catalog = supplier_catalog or SupplierCatalog.from_seed_data()
         self._workflows: dict[str, RFQWorkflowState] = {}
 
     def start(self, *, message: str, user_id: str, company_id: str | None) -> RFQWorkflowState:
         workflow_id = f"wf_{uuid4().hex[:12]}"
         parsed_rfq = parse_procurement_message(message, today=self._today())
         validation = validate_rfq(parsed_rfq, company_id=company_id)
+        supplier_candidates = (
+            shortlist_suppliers(
+                parsed_rfq,
+                catalog=self._supplier_catalog,
+                today=self._today(),
+            )
+            if validation.is_ready_for_supplier_search
+            else []
+        )
+        status = (
+            "supplier_shortlist_ready"
+            if supplier_candidates and validation.is_ready_for_supplier_search
+            else validation.status
+        )
         state = RFQWorkflowState(
             workflow_id=workflow_id,
             user_id=user_id,
             company_id=company_id,
-            status=validation.status,
+            status=status,
             rfq=parsed_rfq,
             missing_fields=validation.missing_fields,
             questions=_questions_for(validation.missing_fields),
+            supplier_candidates=supplier_candidates,
             messages=[WorkflowMessage(role="user", content=message)],
             audit_events=[
                 AuditEvent(event_type="workflow_started", details={"user_id": user_id}),
@@ -40,6 +62,7 @@ class RFQWorkflowService:
                         "missing_fields": validation.missing_fields,
                     },
                 ),
+                *_supplier_matching_events(supplier_candidates),
             ],
         )
         self._workflows[workflow_id] = state
@@ -50,12 +73,27 @@ class RFQWorkflowService:
         parsed_update = parse_procurement_message(message, today=self._today())
         updated_rfq = _merge_rfq(state.rfq, parsed_update)
         validation = validate_rfq(updated_rfq, company_id=state.company_id)
+        supplier_candidates = (
+            shortlist_suppliers(
+                updated_rfq,
+                catalog=self._supplier_catalog,
+                today=self._today(),
+            )
+            if validation.is_ready_for_supplier_search
+            else []
+        )
+        status = (
+            "supplier_shortlist_ready"
+            if supplier_candidates and validation.is_ready_for_supplier_search
+            else validation.status
+        )
         updated_state = state.model_copy(
             update={
-                "status": validation.status,
+                "status": status,
                 "rfq": updated_rfq,
                 "missing_fields": validation.missing_fields,
                 "questions": _questions_for(validation.missing_fields),
+                "supplier_candidates": supplier_candidates,
                 "messages": [
                     *state.messages,
                     WorkflowMessage(role="user", content=message),
@@ -74,6 +112,7 @@ class RFQWorkflowService:
                             "missing_fields": validation.missing_fields,
                         },
                     ),
+                    *_supplier_matching_events(supplier_candidates),
                 ],
             }
         )
@@ -110,3 +149,17 @@ def _extracted_field_names(rfq: RFQDraft) -> list[str]:
         extracted.append(field_name)
 
     return extracted
+
+
+def _supplier_matching_events(supplier_candidates: list[SupplierCandidate]) -> list[AuditEvent]:
+    if not supplier_candidates:
+        return []
+
+    return [
+        AuditEvent(
+            event_type="supplier_matching_completed",
+            details={
+                "supplier_ids": [candidate.supplier_id for candidate in supplier_candidates],
+            },
+        )
+    ]

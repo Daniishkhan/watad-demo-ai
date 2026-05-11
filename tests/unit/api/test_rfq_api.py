@@ -49,16 +49,55 @@ def test_start_and_continue_rfq_workflow_through_api() -> None:
 
     assert continue_response.status_code == 200
     continued = continue_response.json()
-    assert continued["status"] == "ready_for_supplier_search"
+    assert continued["status"] == "supplier_shortlist_ready"
     assert continued["rfq"]["project_name"] == "Al Yasmin Villas"
     assert continued["rfq"]["delivery_site"] == "North Riyadh"
     assert continued["missing_fields"] == []
     assert continued["questions"] == []
+    assert [candidate["supplier_id"] for candidate in continued["supplier_candidates"]] == [
+        "SUP-002",
+        "SUP-001",
+        "SUP-003",
+    ]
 
     get_response = client.get(f"/api/workflows/rfq/{workflow_id}")
 
     assert get_response.status_code == 200
-    assert get_response.json()["status"] == "ready_for_supplier_search"
+    assert get_response.json()["status"] == "supplier_shortlist_ready"
+
+
+def test_supplier_search_tool_returns_catalog_backed_candidates() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/suppliers/search",
+        json={
+            "rfq": {
+                "material_category": "steel",
+                "material_name": "rebar",
+                "specification": "16mm rebar",
+                "quantity": 500,
+                "unit": "tons",
+                "delivery_city": "Riyadh",
+                "delivery_site": "North Riyadh",
+                "delivery_deadline": "2026-05-18",
+                "project_name": "Al Yasmin Villas",
+                "payment_preference": "60_days",
+                "optimization_preference": "lowest_price",
+                "certification_requirements": ["Saudi standard"],
+                "split_delivery_acceptable": True,
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    candidates = response.json()
+    assert [candidate["supplier_id"] for candidate in candidates] == [
+        "SUP-002",
+        "SUP-001",
+        "SUP-003",
+    ]
+    assert candidates[0]["supplier_name"] == "Riyadh Metals"
 
 
 def test_rfq_workflow_api_returns_404_for_unknown_workflow() -> None:

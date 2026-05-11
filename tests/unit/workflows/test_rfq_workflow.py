@@ -36,7 +36,7 @@ def test_start_workflow_returns_structured_rfq_and_clarification() -> None:
     ]
 
 
-def test_continue_workflow_merges_answers_and_reaches_supplier_search_state() -> None:
+def test_continue_workflow_merges_answers_and_reaches_supplier_shortlist_state() -> None:
     service = RFQWorkflowService(today=lambda: date(2026, 5, 11))
     state = service.start(
         message="Need 500 tons of 16mm rebar in Riyadh next week. Cheapest supplier, "
@@ -53,17 +53,23 @@ def test_continue_workflow_merges_answers_and_reaches_supplier_search_state() ->
         ),
     )
 
-    assert resumed.status == "ready_for_supplier_search"
+    assert resumed.status == "supplier_shortlist_ready"
     assert resumed.rfq.project_name == "Al Yasmin Villas"
     assert resumed.rfq.delivery_site == "North Riyadh"
     assert resumed.rfq.certification_requirements == ["Saudi standard"]
     assert resumed.rfq.split_delivery_acceptable is True
     assert resumed.missing_fields == []
     assert resumed.questions == []
-    assert [event.event_type for event in resumed.audit_events][-3:] == [
+    assert [candidate.supplier_id for candidate in resumed.supplier_candidates] == [
+        "SUP-002",
+        "SUP-001",
+        "SUP-003",
+    ]
+    assert [event.event_type for event in resumed.audit_events][-4:] == [
         "user_message_received",
         "intake_parsed",
         "rfq_validated",
+        "supplier_matching_completed",
     ]
 
 

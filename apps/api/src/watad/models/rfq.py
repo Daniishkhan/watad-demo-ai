@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from watad.models.supplier import SupplierCandidate
+
 type OptimizationPreference = Literal[
     "lowest_price",
     "fastest_delivery",
@@ -15,6 +17,7 @@ type RFQWorkflowStatus = Literal[
     "draft",
     "needs_clarification",
     "ready_for_supplier_search",
+    "supplier_shortlist_ready",
 ]
 
 
@@ -120,5 +123,6 @@ class RFQWorkflowState(BaseModel):
     rfq: RFQDraft = Field(default_factory=RFQDraft)
     missing_fields: list[str] = Field(default_factory=list)
     questions: list[str] = Field(default_factory=list)
+    supplier_candidates: list[SupplierCandidate] = Field(default_factory=list)
     messages: list[WorkflowMessage] = Field(default_factory=list)
     audit_events: list[AuditEvent] = Field(default_factory=list)
