@@ -55,9 +55,9 @@ const DEMO_PROMPT =
 const WORKFLOW_STEPS = [
   { label: "Intake", event: "intake_parsed" },
   { label: "Validate", event: "rfq_validated" },
-  { label: "Shortlist", event: "supplier_shortlist_created" },
-  { label: "Compare", event: "award_recommendation_created" },
-  { label: "Credit", event: "credit_checked" },
+  { label: "Shortlist", event: "supplier_matching_completed" },
+  { label: "Compare", event: "offer_comparison_completed" },
+  { label: "Credit", event: "credit_eligibility_completed" },
   { label: "Approval", event: "approval_request_created" },
   { label: "Docs", event: "draft_documents_generated" },
 ] as const;
