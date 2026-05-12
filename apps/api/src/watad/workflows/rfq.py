@@ -8,16 +8,25 @@ from uuid import uuid4
 from langgraph.graph import END, START, StateGraph
 
 from watad.models import (
+    ApprovalAction,
+    ApprovalRequest,
     AuditEvent,
     AwardRecommendation,
     CreditCheckResult,
+    GeneratedDocument,
     RFQDraft,
     RFQWorkflowState,
     RFQWorkflowStatus,
     SupplierCandidate,
     WorkflowMessage,
 )
+from watad.services.approval_gate import (
+    create_approval_request,
+    find_pending_approval,
+    record_approval_decision,
+)
 from watad.services.credit_policy import BuyerProfileStore, check_credit_policy
+from watad.services.document_generation import generate_draft_documents
 from watad.services.intake import parse_procurement_message
 from watad.services.offer_comparison import rank_award_options
 from watad.services.rfq_validation import generate_clarifying_question, validate_rfq
@@ -29,6 +38,8 @@ RFQ_GRAPH_NODE_NAMES: Final[tuple[str, ...]] = (
     "supplier_matching_node",
     "offer_comparison_node",
     "credit_eligibility_node",
+    "approval_compliance_node",
+    "document_generation_node",
 )
 
 
@@ -43,6 +54,8 @@ class RFQGraphState(TypedDict):
     supplier_candidates: list[SupplierCandidate]
     recommendation: AwardRecommendation | None
     credit_check: CreditCheckResult | None
+    approval_requests: list[ApprovalRequest]
+    generated_documents: list[GeneratedDocument]
     messages: list[WorkflowMessage]
     audit_events: list[AuditEvent]
     latest_user_message: str
@@ -96,9 +109,80 @@ class RFQWorkflowService:
     def get(self, workflow_id: str) -> RFQWorkflowState:
         return self._workflows[workflow_id]
 
+    def approve(
+        self,
+        *,
+        workflow_id: str,
+        action: ApprovalAction,
+        decided_by: str,
+    ) -> RFQWorkflowState:
+        return self._record_approval_decision(
+            workflow_id=workflow_id,
+            action=action,
+            decision="approved",
+            decided_by=decided_by,
+        )
+
+    def reject(
+        self,
+        *,
+        workflow_id: str,
+        action: ApprovalAction,
+        decided_by: str,
+    ) -> RFQWorkflowState:
+        return self._record_approval_decision(
+            workflow_id=workflow_id,
+            action=action,
+            decision="rejected",
+            decided_by=decided_by,
+        )
+
     def _run_graph(self, initial_state: RFQGraphState) -> RFQWorkflowState:
         result = cast(RFQGraphState, self._graph.invoke(initial_state))
         return _workflow_state_from_graph_state(result)
+
+    def _record_approval_decision(
+        self,
+        *,
+        workflow_id: str,
+        action: ApprovalAction,
+        decision: str,
+        decided_by: str,
+    ) -> RFQWorkflowState:
+        state = self.get(workflow_id)
+        approval = find_pending_approval(state.approval_requests, action=action)
+        decided_approval = record_approval_decision(
+            approval,
+            decision=decision,
+            decided_by=decided_by,
+        )
+        approval_requests = [
+            decided_approval if item.approval_id == approval.approval_id else item
+            for item in state.approval_requests
+        ]
+        status: RFQWorkflowStatus = (
+            "approval_recorded" if decision == "approved" else "approval_rejected"
+        )
+        updated_state = state.model_copy(
+            update={
+                "status": status,
+                "approval_requests": approval_requests,
+                "audit_events": [
+                    *state.audit_events,
+                    AuditEvent(
+                        event_type="approval_decision_recorded",
+                        details={
+                            "approval_id": approval.approval_id,
+                            "action": approval.action,
+                            "decision": decision,
+                            "decided_by": decided_by,
+                        },
+                    ),
+                ],
+            }
+        )
+        self._workflows[workflow_id] = updated_state
+        return updated_state
 
     def _intake_node(self, state: RFQGraphState) -> dict[str, object]:
         parsed_update = parse_procurement_message(state["latest_user_message"], today=self._today())
@@ -126,6 +210,8 @@ class RFQWorkflowService:
             "supplier_candidates": [],
             "recommendation": None,
             "credit_check": None,
+            "approval_requests": [],
+            "generated_documents": [],
             "audit_events": audit_events,
         }
 
@@ -202,6 +288,54 @@ class RFQWorkflowService:
             ],
         }
 
+    def _approval_compliance_node(self, state: RFQGraphState) -> dict[str, object]:
+        if state["recommendation"] is None:
+            return {}
+
+        approval_request = create_approval_request(
+            workflow_id=state["workflow_id"],
+            credit_check=state["credit_check"],
+        )
+        return {
+            "approval_requests": [approval_request],
+            "audit_events": [
+                *state["audit_events"],
+                AuditEvent(
+                    event_type="approval_request_created",
+                    details={
+                        "approval_id": approval_request.approval_id,
+                        "action": approval_request.action,
+                        "approver_role": approval_request.approver_role,
+                    },
+                ),
+            ],
+        }
+
+    def _document_generation_node(self, state: RFQGraphState) -> dict[str, object]:
+        if state["recommendation"] is None:
+            return {}
+
+        generated_documents = generate_draft_documents(
+            workflow_id=state["workflow_id"],
+            rfq=state["rfq"],
+            supplier_candidates=state["supplier_candidates"],
+            recommendation=state["recommendation"],
+            credit_check=state["credit_check"],
+        )
+        return {
+            "status": "draft_artifacts_ready",
+            "generated_documents": generated_documents,
+            "audit_events": [
+                *state["audit_events"],
+                AuditEvent(
+                    event_type="draft_documents_generated",
+                    details={
+                        "document_ids": [document.document_id for document in generated_documents],
+                    },
+                ),
+            ],
+        }
+
 
 def _build_graph(service: RFQWorkflowService) -> Any:
     graph = StateGraph(RFQGraphState)
@@ -210,12 +344,16 @@ def _build_graph(service: RFQWorkflowService) -> Any:
     graph.add_node("supplier_matching_node", service._supplier_matching_node)
     graph.add_node("offer_comparison_node", service._offer_comparison_node)
     graph.add_node("credit_eligibility_node", service._credit_eligibility_node)
+    graph.add_node("approval_compliance_node", service._approval_compliance_node)
+    graph.add_node("document_generation_node", service._document_generation_node)
     graph.add_edge(START, "intake_node")
     graph.add_edge("intake_node", "rfq_validation_node")
     graph.add_conditional_edges("rfq_validation_node", _route_after_validation)
     graph.add_conditional_edges("supplier_matching_node", _route_after_supplier_matching)
     graph.add_edge("offer_comparison_node", "credit_eligibility_node")
-    graph.add_edge("credit_eligibility_node", END)
+    graph.add_edge("credit_eligibility_node", "approval_compliance_node")
+    graph.add_edge("approval_compliance_node", "document_generation_node")
+    graph.add_edge("document_generation_node", END)
     return graph.compile()
 
 
@@ -252,6 +390,8 @@ def _initial_graph_state(
         "supplier_candidates": [],
         "recommendation": None,
         "credit_check": None,
+        "approval_requests": [],
+        "generated_documents": [],
         "messages": [],
         "audit_events": [],
         "latest_user_message": latest_user_message,
@@ -276,6 +416,8 @@ def _graph_state_from_workflow_state(
         "supplier_candidates": state.supplier_candidates,
         "recommendation": state.recommendation,
         "credit_check": state.credit_check,
+        "approval_requests": state.approval_requests,
+        "generated_documents": state.generated_documents,
         "messages": state.messages,
         "audit_events": state.audit_events,
         "latest_user_message": latest_user_message,
@@ -295,6 +437,8 @@ def _workflow_state_from_graph_state(state: RFQGraphState) -> RFQWorkflowState:
         supplier_candidates=state["supplier_candidates"],
         recommendation=state["recommendation"],
         credit_check=state["credit_check"],
+        approval_requests=state["approval_requests"],
+        generated_documents=state["generated_documents"],
         messages=state["messages"],
         audit_events=state["audit_events"],
     )

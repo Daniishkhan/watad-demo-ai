@@ -4,8 +4,10 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from watad.models import (
+    ApprovalAction,
     AwardRecommendation,
     CreditCheckResult,
+    GeneratedDocument,
     RFQDraft,
     RFQValidationResult,
     RFQWorkflowState,
@@ -73,6 +75,13 @@ class CreditCheckRequest(BaseModel):
     company_id: str | None = None
 
 
+class ApprovalDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: ApprovalAction
+    decided_by: str = Field(min_length=1)
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="watad-api")
@@ -103,6 +112,48 @@ def add_rfq_workflow_message(workflow_id: str, request: WorkflowMessageRequest) 
 def get_rfq_workflow(workflow_id: str) -> RFQWorkflowState:
     try:
         return workflow_service.get(workflow_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="workflow not found") from error
+
+
+@app.post("/api/workflows/rfq/{workflow_id}/approve", response_model=RFQWorkflowState)
+def approve_rfq_workflow_action(
+    workflow_id: str,
+    request: ApprovalDecisionRequest,
+) -> RFQWorkflowState:
+    try:
+        return workflow_service.approve(
+            workflow_id=workflow_id,
+            action=request.action,
+            decided_by=request.decided_by,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="pending approval not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.post("/api/workflows/rfq/{workflow_id}/reject", response_model=RFQWorkflowState)
+def reject_rfq_workflow_action(
+    workflow_id: str,
+    request: ApprovalDecisionRequest,
+) -> RFQWorkflowState:
+    try:
+        return workflow_service.reject(
+            workflow_id=workflow_id,
+            action=request.action,
+            decided_by=request.decided_by,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="pending approval not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.get("/api/workflows/rfq/{workflow_id}/artifacts", response_model=list[GeneratedDocument])
+def get_rfq_workflow_artifacts(workflow_id: str) -> list[GeneratedDocument]:
+    try:
+        return workflow_service.get(workflow_id).generated_documents
     except KeyError as error:
         raise HTTPException(status_code=404, detail="workflow not found") from error
 

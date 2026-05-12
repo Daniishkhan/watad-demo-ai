@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help sync setup install-hooks run dev infra-up infra-down infra-reset lint lint-fix format format-check typecheck test test-unit test-integration test-eval coverage check ci clean
+.PHONY: help sync setup install-hooks run dev smoke-api infra-up infra-down infra-reset lint lint-fix format format-check typecheck test test-unit test-integration test-eval coverage check ci clean
 
 help: ## Show available commands.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -20,6 +20,9 @@ run: ## Run the backend console-script entrypoint.
 
 dev: ## Run the future FastAPI app with reload once watad.api exists.
 	uv run uvicorn watad.api:app --reload
+
+smoke-api: ## Smoke test a running API at WATAD_API_BASE_URL or localhost:8000.
+	uv run python scripts/smoke_api.py
 
 infra-up: ## Start local Postgres+pgvector and Redis.
 	docker compose -f infra/docker-compose.yml up -d
