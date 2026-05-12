@@ -6,6 +6,18 @@ AridOS RFQ Copilot is a prototype agentic workflow for construction procurement.
 
 The goal is to demonstrate senior-level agent engineering: stateful orchestration, deterministic tools, retrieval, approval gates, observability, evaluation, and polished product UX.
 
+### Current MVP Slice
+
+The implemented MVP has:
+
+- FastAPI workflow endpoints under `apps/api`.
+- LangGraph orchestration for intake, RFQ validation, supplier matching, offer comparison, credit eligibility, approval compliance, and document generation.
+- A Next.js CopilotKit operator console under `apps/web`.
+- CopilotKit frontend tools that start/update RFQ workflows and approve/reject pending human gates.
+- A same-origin UI proxy to the FastAPI backend.
+
+The current demo path uses the seeded Riyadh steel supplier and buyer-credit data. It does not send real supplier outreach or issue a real PO.
+
 ## 2. Problem Statement
 
 Construction procurement requests often begin as vague messages over WhatsApp, email, phone calls, or spreadsheets. Operators must clarify requirements, normalize material specifications, identify suppliers, collect offers, compare tradeoffs, check payment terms, coordinate approvals, and generate commercial documents.
@@ -333,9 +345,8 @@ Target prototype performance:
 
 - Next.js
 - TypeScript
-- Tailwind CSS
 - CopilotKit
-- shadcn/ui
+- CSS modules/global CSS for the current operator console
 
 ### Backend
 
@@ -672,6 +683,8 @@ Request:
 
 ## 11. UI Specification
 
+The MVP implements this as the `apps/web` operator console.
+
 ## 11.1 Layout
 
 ### Left Panel: Copilot Chat
@@ -682,6 +695,7 @@ Features:
 - Clarifying questions
 - Recommendation explanation
 - Approval prompts
+- Quick actions for the seeded demo RFQ and common site clarification
 
 ### Center Panel: RFQ Workspace
 
@@ -709,8 +723,9 @@ Shows:
 - Recommendation generated
 - Awaiting approval
 - PO draft generated
+- Human-gated approval cards with approve/reject controls
 
-### Bottom Panel or Tab: Supplier Comparison
+### Supplier Comparison
 
 Shows supplier cards/table:
 
@@ -742,6 +757,7 @@ Shows:
 - Finance approval required
 - Awaiting approval
 - PO draft ready
+- Approval recorded
 - Error/recovery state
 
 ## 12. Synthetic Data Requirements
@@ -910,6 +926,8 @@ Expected:
 - Credit policy tool
 - Approval gate
 - RFQ/PO draft generation
+
+Status: implemented for the seeded Riyadh rebar RFQ path. Remaining hardening work is broader real-data coverage, persistence, evals, observability, and production auth/RBAC.
 
 ### Phase 2: Observability and Evals
 

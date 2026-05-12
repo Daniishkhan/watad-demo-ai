@@ -7,8 +7,8 @@ This document defines *how* we work on the codebase. The product/architecture sp
 The repo is a **uv workspace monorepo**:
 
 ```
-apps/api/          # FastAPI + LangGraph backend (the only app today)
-apps/web/          # Next.js + CopilotKit frontend — added when needed, not now
+apps/api/          # FastAPI + LangGraph backend
+apps/web/          # Next.js + CopilotKit RFQ operator console
 packages/          # internal shared libs — only when at least 2 members need the same code
 tests/             # workspace-wide tests, organized by layer (see §2)
 docs/              # specs + this workflow doc
@@ -20,10 +20,10 @@ uv.lock            # single lockfile for the whole workspace
 
 **Two principles drive this shape:**
 
-1. **Monorepo for atomicity.** Backend, future frontend, docs, infra, fixtures, seed data, and workflow specs stay versioned together. For an approval-gated procurement product, many changes cut across API contracts, data models, evals, and UI flows — atomic PRs matter more than independent deploy cadences.
+1. **Monorepo for atomicity.** Backend, frontend, docs, infra, fixtures, seed data, and workflow specs stay versioned together. For an approval-gated procurement product, many changes cut across API contracts, data models, evals, and UI flows — atomic PRs matter more than independent deploy cadences.
 2. **Modular monolith inside `apps/api/`, not multiple backend services.** One FastAPI app with clear modules (`api/`, `agents/`, `services/`, `models/`, `persistence/`, `workflows/`) is simpler and safer right now. Add a separate worker process *only* when background jobs, queue consumers, or long-running LangGraph executions genuinely need independent scaling. Don't pre-split.
 
-**Monorepo's main downside is tooling complexity once Python and TypeScript both exist.** That stays manageable if we keep boundaries clean: backend owns the OpenAPI schema, frontend consumes generated clients/types later, and CI runs scoped checks per app.
+**Monorepo's main downside is Python plus TypeScript tooling complexity.** That stays manageable if we keep boundaries clean: backend owns the workflow API, frontend calls it through the local proxy in `apps/web/app/api/watad/[...path]/route.ts`, and CI runs scoped checks per app.
 
 **`packages/` growth criteria:** promote code into `packages/shared/` only when ≥ 2 workspace members genuinely need the same code. Speculative shared libs rot.
 
@@ -179,6 +179,7 @@ Copy this into the PR description and tick boxes before requesting review (or me
 - [ ] All tests pass: `uv run pytest`
 - [ ] Lint clean: `uv run ruff check .`
 - [ ] Types clean: `uv run mypy .`
+- [ ] Frontend gates pass when `apps/web` changes: `npm run typecheck && npm run lint && npm run build`
 - [ ] New behavior has tests at the appropriate layer (unit / integration / graph / eval)
 - [ ] Touched guardrails (approval gate, supplier catalog boundary, credit policy) have updated/added tests
 - [ ] No secrets in diff (no `sk-...`, no real API keys, no passwords)
@@ -209,7 +210,35 @@ Run hooks manually with:
 uv run pre-commit run --all-files
 ```
 
-GitHub Actions CI runs on pushes to `main` and pull requests. It installs with `uv sync --all-packages --locked`, then runs Ruff format check, Ruff lint, mypy, and fast pytest. Add a separate service-backed integration job once `tests/integration/` has real tests.
+GitHub Actions CI runs on pushes to `main` and pull requests. It installs with `uv sync --all-packages --locked`, then runs Ruff format check, Ruff lint, mypy, and fast pytest. Frontend changes should also run `cd apps/web && npm run typecheck && npm run lint && npm run build`. Add a separate service-backed integration job once `tests/integration/` has real tests.
+
+## 5.1 Running the MVP UI
+
+Run the backend:
+
+```bash
+uv run uvicorn watad.api:app --host 127.0.0.1 --port 8000
+```
+
+Run the CopilotKit UI:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:3000`. The UI expects `OPENAI_API_KEY` in the root `.env`
+for CopilotKit chat. It uses `WATAD_API_BASE_URL` when set, otherwise proxies to
+`http://127.0.0.1:8000`.
+
+Smoke path with real chat:
+
+1. Click **Start sample RFQ**.
+2. Verify the workflow reaches `draft_artifacts_ready` with supplier candidates,
+   recommendation, finance approval, and generated documents.
+3. Type `Approve the finance review.`.
+4. Verify the approval changes to `approved` and status becomes `approval_recorded`.
 
 ## 6. Anti-patterns to avoid
 

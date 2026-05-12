@@ -2,13 +2,12 @@
 
 ## Project Structure & Module Organization
 
-This is a greenfield Python 3.12 prototype for the **AridOS RFQ Copilot**, organized as a **uv workspace monorepo** with a **modular monolith** backend. Code is not yet written beyond `apps/api/src/watad/main.py`; dependencies, infra, and lint/test config are in place. Treat `docs/` as source of truth.
+This is a Python 3.12 + TypeScript prototype for the **AridOS RFQ Copilot**, organized as a **uv workspace monorepo** with a **modular monolith** backend and a Next.js CopilotKit UI. Treat `docs/` as source of truth.
 
 ```
-apps/api/src/watad/   # FastAPI + LangGraph backend (only app today)
-                      # will grow into api/, agents/, services/, models/,
-                      # persistence/, workflows/ — one process, clear modules
-apps/web/             # Next.js + CopilotKit frontend (future, not now)
+apps/api/src/watad/   # FastAPI + LangGraph backend
+                      # modular monolith: models/, services/, workflows/, api.py
+apps/web/             # Next.js + CopilotKit RFQ operator console
 packages/             # shared libs only when ≥ 2 members need the same code
 tests/{unit,integration,evals}/
 docs/                 # specs + workflow process
@@ -27,7 +26,10 @@ Don't split the backend into multiple services until a runtime constraint demand
 - `cp .env.example .env`: create local config, then fill provider keys.
 - `docker compose -f infra/docker-compose.yml up -d` / `… down`: start or stop local infra (Postgres+pgvector, Redis). Compose project name is pinned to `watad`.
 - `uv run watad`: run the backend console-script entrypoint.
-- `uv run uvicorn watad.api:app --reload`: run the future FastAPI app once scaffolded.
+- `uv run uvicorn watad.api:app --reload`: run the FastAPI app.
+- `cd apps/web && npm install`: install frontend dependencies.
+- `cd apps/web && npm run dev`: run the CopilotKit UI on `127.0.0.1:3000`.
+- `cd apps/web && npm run typecheck && npm run lint && npm run build`: run frontend gates.
 - `uv run pytest`: run the test suite.
 - `uv run pytest tests/unit/test_x.py::test_y -v`: run one focused test.
 - `uv run pytest -m "not integration and not eval"`: fast unit-only run.
@@ -38,7 +40,7 @@ Don't split the backend into multiple services until a runtime constraint demand
 
 ## Coding Style & Naming Conventions
 
-Python 3.12, 4-space indentation, Ruff defaults from the workspace `pyproject.toml` with a 100-character line length. Prefer typed functions and Pydantic models for workflow state and APIs. Use `snake_case` for modules, functions, variables, and tests; `PascalCase` for classes. Keep deterministic rules in services/tools, not LLM prompts. New backend code lives under `apps/api/src/watad/<module>/` — pick the right module (`api`, `agents`, `services`, `models`, `persistence`, `workflows`) before writing.
+Python 3.12, 4-space indentation, Ruff defaults from the workspace `pyproject.toml` with a 100-character line length. Prefer typed functions and Pydantic models for workflow state and APIs. Use `snake_case` for modules, functions, variables, and tests; `PascalCase` for classes. Keep deterministic rules in services/tools, not LLM prompts. New backend code lives under `apps/api/src/watad/<module>/` — pick the right module (`services`, `models`, `workflows`) before writing. New frontend code lives under `apps/web/app`, `apps/web/components`, `apps/web/lib`, or `apps/web/types`.
 
 ## Testing Guidelines
 

@@ -82,6 +82,10 @@ Workflow State + Audit Log
         +--> n8n Approval / Notification Handoff
 ```
 
+Current MVP note: the CopilotKit pilot UI now exists in `apps/web`. It connects
+to the FastAPI backend through a local Next.js proxy and exposes frontend tools
+for starting/updating RFQ workflows and recording approval decisions.
+
 ## 5. Shared Workflow State
 
 All agents operate on a shared typed state object.
@@ -729,54 +733,36 @@ Approval actions should be explicit:
 - Reject recommendation.
 - Generate PO draft.
 
+The current UI shows pending approval cards in the right panel and exposes the
+same decision path through chat, for example: `Approve the finance review.`
+
 ## 10. Example End-to-End Demo Script
 
 ### Step 1 — Contractor Request
 
 ```text
-Need 500 tons of 16mm rebar in Riyadh next week. Cheapest supplier, pay later if possible.
+Need 80 tons of 16mm rebar for Project Qiddiya Stadium, delivery to North Riyadh by 2026-06-20. Prefer 60 day payment terms and balanced optimization. SASO certification required. Split delivery is acceptable.
 ```
 
-### Step 2 — Intake Agent Clarification
+### Step 2 — Workflow Run
 
 ```text
-I can create this RFQ. I need three details first:
-1. What is the exact delivery site in Riyadh?
-2. Is Saudi standard certification enough, or do you have an approved brand list?
-3. Is split delivery acceptable if it lowers cost?
+The UI starts the RFQ workflow, fills the RFQ workspace, shortlists suppliers,
+checks credit policy, creates a finance approval gate, and generates draft
+documents.
 ```
 
-### Step 3 — Contractor Reply
-
-```text
-North Riyadh, Saudi standard is fine, split delivery is okay if the first batch arrives within 7 days. Prefer 60-day payment.
-```
-
-### Step 4 — RFQ Structuring
-
-The RFQ workspace updates:
-
-```text
-Material: Steel Rebar Grade 60, 16mm
-Quantity: 500 tons
-Delivery site: North Riyadh
-Deadline: within 7 days for first batch
-Split delivery: allowed
-Payment preference: 60 days
-Status: Draft
-```
-
-### Step 5 — Supplier Matching
+### Step 3 — Supplier Matching
 
 Supplier shortlist appears:
 
 | Supplier | Price / Ton | Availability | Delivery | Payment Terms | Reliability | Fit |
 |---|---:|---:|---|---|---:|---:|
-| Al Noor Steel | SAR 2,410 | 500 tons | 6 days | 30 days | 94% | 92% |
-| Riyadh Metals | SAR 2,360 | 500 tons | 8 days | 60 days | 89% | 89% |
-| GulfBuild Supply | SAR 2,320 | 300 now / 200 later | 7–10 days | Upfront | 91% | 84% |
+| Riyadh Metals | SAR 2,360 | 80 tons | 8 days | 30/60 days | 89% | 99% |
+| Al Noor Steel | SAR 2,410 | 80 tons | 6 days | 30 days | 94% | 69% |
+| GulfBuild Supply | SAR 2,320 | 80 tons | 7 days | Upfront | 91% | 69% |
 
-### Step 6 — Recommendation
+### Step 4 — Recommendation
 
 ```text
 Recommended award: Riyadh Metals.
@@ -784,26 +770,33 @@ Recommended award: Riyadh Metals.
 Rationale: Riyadh Metals is not the lowest-price option, but it is the best balanced fit because it supports 60-day payment terms and can fulfill the full quantity near the requested delivery window. If the 7-day deadline is strict, Al Noor Steel is safer. If lowest price is the only priority and upfront payment is acceptable, GulfBuild is cheaper.
 ```
 
-### Step 7 — Credit Check
+### Step 5 — Credit Check
 
 ```text
-Credit status: Conditional.
-Finance approval required because the estimated order value exceeds the automatic approval threshold and the contractor requested 60-day terms.
+Credit status: Finance approval required.
+Finance approval is required because the contractor requested 60-day terms.
 ```
 
-### Step 8 — Approval Gate
+### Step 6 — Approval Gate
 
 ```text
-Approval required before supplier outreach.
+Approval required before deferred payment terms can proceed.
 
-Action: Send RFQ to shortlisted suppliers.
-Approver: Procurement Manager.
+Action: Finance review.
+Approver: Finance reviewer.
 Status: Pending.
 ```
 
-### Step 9 — Document Generation
+### Step 7 — Approval Decision
 
-After approval, generate:
+```text
+User: Approve the finance review.
+System: Approval recorded.
+```
+
+### Step 8 — Document Generation
+
+The workflow generates draft artifacts:
 
 - RFQ draft.
 - Supplier outreach draft.
