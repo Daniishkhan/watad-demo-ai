@@ -12,6 +12,8 @@ def test_workflow_service_exposes_langgraph_node_order() -> None:
         "supplier_matching_node",
         "offer_comparison_node",
         "credit_eligibility_node",
+        "approval_compliance_node",
+        "document_generation_node",
     )
 
 
@@ -65,7 +67,7 @@ def test_continue_workflow_merges_answers_and_reaches_recommendation_state() -> 
         ),
     )
 
-    assert resumed.status == "finance_approval_required"
+    assert resumed.status == "draft_artifacts_ready"
     assert resumed.rfq.project_name == "Al Yasmin Villas"
     assert resumed.rfq.delivery_site == "North Riyadh"
     assert resumed.rfq.certification_requirements == ["Saudi standard"]
@@ -82,14 +84,49 @@ def test_continue_workflow_merges_answers_and_reaches_recommendation_state() -> 
     assert resumed.credit_check is not None
     assert resumed.credit_check.status == "finance_approval_required"
     assert resumed.credit_check.estimated_order_value_sar == 1_180_000
-    assert [event.event_type for event in resumed.audit_events][-6:] == [
+    assert len(resumed.approval_requests) == 1
+    assert resumed.approval_requests[0].action == "finance_review"
+    assert resumed.approval_requests[0].status == "pending"
+    assert [document.document_type for document in resumed.generated_documents] == [
+        "rfq_draft",
+        "supplier_outreach_draft",
+        "award_recommendation_memo",
+        "po_preview",
+    ]
+    assert [event.event_type for event in resumed.audit_events][-8:] == [
         "user_message_received",
         "intake_parsed",
         "rfq_validated",
         "supplier_matching_completed",
         "offer_comparison_completed",
         "credit_eligibility_completed",
+        "approval_request_created",
+        "draft_documents_generated",
     ]
+
+
+def test_workflow_records_approval_decision() -> None:
+    service = RFQWorkflowService(today=lambda: date(2026, 5, 11))
+    state = service.start(
+        message=(
+            "Need 500 tons of 16mm rebar in Riyadh next week. Project Al Yasmin Villas, "
+            "north Riyadh. Saudi standard is fine. Split delivery is okay if cheaper. "
+            "60-day payment preferred."
+        ),
+        user_id="user_123",
+        company_id="company_456",
+    )
+
+    approved = service.approve(
+        workflow_id=state.workflow_id,
+        action="finance_review",
+        decided_by="finance_1",
+    )
+
+    assert approved.approval_requests[0].status == "approved"
+    assert approved.approval_requests[0].decided_by == "finance_1"
+    assert approved.status == "approval_recorded"
+    assert approved.audit_events[-1].event_type == "approval_decision_recorded"
 
 
 def test_get_workflow_raises_key_error_for_unknown_id() -> None:

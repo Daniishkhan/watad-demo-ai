@@ -49,7 +49,7 @@ def test_start_and_continue_rfq_workflow_through_api() -> None:
 
     assert continue_response.status_code == 200
     continued = continue_response.json()
-    assert continued["status"] == "finance_approval_required"
+    assert continued["status"] == "draft_artifacts_ready"
     assert continued["rfq"]["project_name"] == "Al Yasmin Villas"
     assert continued["rfq"]["delivery_site"] == "North Riyadh"
     assert continued["missing_fields"] == []
@@ -62,11 +62,27 @@ def test_start_and_continue_rfq_workflow_through_api() -> None:
     assert continued["recommendation"]["recommended_supplier_id"] == "SUP-002"
     assert continued["credit_check"]["status"] == "finance_approval_required"
     assert continued["credit_check"]["finance_approval_required"] is True
+    assert continued["approval_requests"][0]["action"] == "finance_review"
+    assert [document["document_type"] for document in continued["generated_documents"]] == [
+        "rfq_draft",
+        "supplier_outreach_draft",
+        "award_recommendation_memo",
+        "po_preview",
+    ]
 
     get_response = client.get(f"/api/workflows/rfq/{workflow_id}")
 
     assert get_response.status_code == 200
-    assert get_response.json()["status"] == "finance_approval_required"
+    assert get_response.json()["status"] == "draft_artifacts_ready"
+
+    approve_response = client.post(
+        f"/api/workflows/rfq/{workflow_id}/approve",
+        json={"action": "finance_review", "decided_by": "finance_1"},
+    )
+
+    assert approve_response.status_code == 200
+    assert approve_response.json()["status"] == "approval_recorded"
+    assert approve_response.json()["approval_requests"][0]["status"] == "approved"
 
 
 def test_credit_check_tool_returns_finance_approval_requirement() -> None:
