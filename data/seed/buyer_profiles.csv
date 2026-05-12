@@ -1,0 +1,5 @@
+company_id,company_name,credit_limit_sar,current_utilization_sar,payment_history_status,documents_on_file
+company_456,Al Yasmin Contracting,2000000,450000,current,commercial_registration|vat_certificate
+company_strong,Strong Builder,5000000,500000,current,commercial_registration|vat_certificate|latest_bank_statement|signed_project_contract
+company_near_limit,Near Limit LLC,1000000,850000,current,commercial_registration|vat_certificate|latest_bank_statement|signed_project_contract
+company_overdue,Overdue Contractor,1500000,300000,overdue,commercial_registration|vat_certificate

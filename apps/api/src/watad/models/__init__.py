@@ -1,3 +1,4 @@
+from watad.models.credit import BuyerCreditProfile, CreditCheckResult, CreditCheckStatus
 from watad.models.recommendation import AwardAlternative, AwardRecommendation
 from watad.models.rfq import (
     AuditEvent,
@@ -14,6 +15,9 @@ __all__ = [
     "AuditEvent",
     "AwardAlternative",
     "AwardRecommendation",
+    "BuyerCreditProfile",
+    "CreditCheckResult",
+    "CreditCheckStatus",
     "OptimizationPreference",
     "RFQDraft",
     "RFQValidationResult",

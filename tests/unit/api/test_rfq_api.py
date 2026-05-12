@@ -49,7 +49,7 @@ def test_start_and_continue_rfq_workflow_through_api() -> None:
 
     assert continue_response.status_code == 200
     continued = continue_response.json()
-    assert continued["status"] == "recommendation_ready"
+    assert continued["status"] == "finance_approval_required"
     assert continued["rfq"]["project_name"] == "Al Yasmin Villas"
     assert continued["rfq"]["delivery_site"] == "North Riyadh"
     assert continued["missing_fields"] == []
@@ -60,11 +60,40 @@ def test_start_and_continue_rfq_workflow_through_api() -> None:
         "SUP-003",
     ]
     assert continued["recommendation"]["recommended_supplier_id"] == "SUP-002"
+    assert continued["credit_check"]["status"] == "finance_approval_required"
+    assert continued["credit_check"]["finance_approval_required"] is True
 
     get_response = client.get(f"/api/workflows/rfq/{workflow_id}")
 
     assert get_response.status_code == 200
-    assert get_response.json()["status"] == "recommendation_ready"
+    assert get_response.json()["status"] == "finance_approval_required"
+
+
+def test_credit_check_tool_returns_finance_approval_requirement() -> None:
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/credit/check",
+        json={
+            "rfq": {"payment_preference": "60_days"},
+            "recommendation": {
+                "recommended_supplier_id": "SUP-002",
+                "recommended_supplier_name": "Riyadh Metals",
+                "optimization_goal": "lowest_price",
+                "reason": "Best fit",
+                "estimated_total_price_sar": 1_180_000,
+            },
+            "company_id": "company_456",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "finance_approval_required"
+    assert response.json()["required_actions"] == [
+        "route_to_finance_reviewer",
+        "collect_latest_bank_statement",
+        "collect_signed_project_contract",
+    ]
 
 
 def test_offer_comparison_tool_returns_award_recommendation() -> None:

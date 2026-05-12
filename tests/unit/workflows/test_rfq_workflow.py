@@ -11,6 +11,7 @@ def test_workflow_service_exposes_langgraph_node_order() -> None:
         "rfq_validation_node",
         "supplier_matching_node",
         "offer_comparison_node",
+        "credit_eligibility_node",
     )
 
 
@@ -64,7 +65,7 @@ def test_continue_workflow_merges_answers_and_reaches_recommendation_state() -> 
         ),
     )
 
-    assert resumed.status == "recommendation_ready"
+    assert resumed.status == "finance_approval_required"
     assert resumed.rfq.project_name == "Al Yasmin Villas"
     assert resumed.rfq.delivery_site == "North Riyadh"
     assert resumed.rfq.certification_requirements == ["Saudi standard"]
@@ -78,12 +79,16 @@ def test_continue_workflow_merges_answers_and_reaches_recommendation_state() -> 
     ]
     assert resumed.recommendation is not None
     assert resumed.recommendation.recommended_supplier_id == "SUP-002"
-    assert [event.event_type for event in resumed.audit_events][-5:] == [
+    assert resumed.credit_check is not None
+    assert resumed.credit_check.status == "finance_approval_required"
+    assert resumed.credit_check.estimated_order_value_sar == 1_180_000
+    assert [event.event_type for event in resumed.audit_events][-6:] == [
         "user_message_received",
         "intake_parsed",
         "rfq_validated",
         "supplier_matching_completed",
         "offer_comparison_completed",
+        "credit_eligibility_completed",
     ]
 
 
