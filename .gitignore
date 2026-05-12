@@ -25,6 +25,7 @@ out/
 .vscode/
 
 # Tooling caches
+.codex/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
